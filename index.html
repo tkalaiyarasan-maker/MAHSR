@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MAHSR Time Crunch Simulation</title>
+    <title>MAHSR Time Crunch Simulation (AI Enhanced)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js CDN for visualization -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
@@ -23,11 +23,10 @@
         .option-button {
             transition: all 0.2s ease-in-out;
         }
-        .option-button:hover {
+        .option-button:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(59, 130, 246, 0.2);
         }
-        /* Custom styles for disabled buttons to maintain aesthetics */
         .option-button:disabled {
             opacity: 0.7;
             cursor: not-allowed;
@@ -39,7 +38,19 @@
             word-wrap: break-word;
             max-height: 400px;
             overflow-y: auto;
+            /* Basic Markdown rendering for report */
         }
+        .report-content pre {
+            white-space: pre-wrap;
+            font-family: inherit;
+        }
+        .report-content h1, .report-content h2, .report-content h3 {
+            font-weight: bold;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .report-content h2 { font-size: 1.5rem; border-bottom: 2px solid #ddd; padding-bottom: 4px; }
+        .report-content h3 { font-size: 1.25rem; }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -116,19 +127,31 @@
             <h2 id="challenge-title" class="text-xl md:text-2xl font-bold text-gray-800 mb-4"></h2>
             <p id="challenge-description" class="text-gray-700 mb-6"></p>
 
-            <div id="options-container" class="space-y-4">
+            <!-- New Brainstorm Button (Gemini Feature 1) -->
+            <button id="brainstorm-button" onclick="getPmBrainstorm()" class="w-full mt-4 py-3 px-4 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition duration-300 shadow-md flex items-center justify-center space-x-2">
+                <span id="brainstorm-loader" class="hidden">
+                    <!-- Simple loading spinner -->
+                    <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </span>
+                <span>✨ Get PM Brainstorm</span>
+            </button>
+            
+            <!-- New Brainstorm Output Area -->
+            <div id="brainstorm-output" class="mt-4 p-4 bg-purple-50 border border-purple-300 rounded-lg hidden">
+                <h3 class="text-lg font-semibold text-purple-800 mb-2">AI Consultant Analysis</h3>
+                <pre id="brainstorm-text" class="text-gray-700 whitespace-pre-wrap leading-relaxed"></pre>
+            </div>
+
+            <div id="options-container" class="space-y-4 mt-6">
                 <!-- Options will be dynamically inserted here -->
             </div>
 
             <p id="status-message" class="mt-4 p-3 bg-yellow-100 border border-yellow-300 text-yellow-800 rounded-lg hidden">
                 <span class="font-bold">Result:</span>
             </p>
-
-            <!-- Next button is now handled by the intermission timer -->
-            <button id="next-button" onclick="advanceSimulation()" class="w-full mt-6 py-3 px-4 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition duration-300 shadow-md hidden">
-                <!-- This button is hidden but kept for reference -->
-                Proceed to Next Stage (<span id="round-count">1/20</span>)
-            </button>
         </div>
 
         <!-- Game Over Modal (Hidden by default) -->
@@ -140,7 +163,7 @@
                 </div>
                 <div id="verdict" class="p-4 rounded-lg text-center font-bold text-xl mb-4"></div>
                 
-                <!-- Report Status -->
+                <!-- Report Status (Gemini Feature 2) -->
                 <div id="report-status" class="p-3 bg-blue-100 text-blue-800 rounded-lg font-medium text-center mb-4">
                     Generating final analysis report...
                 </div>
@@ -164,7 +187,6 @@
         const START_YEAR = 2020;
         const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         const START_MONTH_INDEX = 11; // Dec 2020 (0-indexed)
-        const ROUND_COUNT_DISPLAY = document.getElementById('round-count');
         const COST_RATE_PER_DAY_SAVED = 2; // 2 Cr per day saved
         const API_KEY = ""; // API key is left empty for runtime provision
         
@@ -191,9 +213,10 @@
             targetProgress: 0, 
             currentChallengeIndex: 0,
             isDecisionPending: false,
-            isIntermission: false, // New state flag
-            intermissionTimer: INTERMISSION_DURATION, // New timer
-            intermissionIntervalId: null, // New interval handle
+            isIntermission: false,
+            intermissionTimer: INTERMISSION_DURATION,
+            intermissionIntervalId: null,
+            isBrainstorming: false, // State for LLM call
             // History for charting, starting at 0/0
             history: [{ round: 0, label: 'Start', delay: 0, cost: 0 }] 
         };
@@ -210,22 +233,35 @@
                 try {
                     const response = await fetch(url, options);
                     if (response.ok) return response;
-                    // If response is not OK, maybe it's a rate limit or transient server error
-                    console.error(`Attempt ${i + 1} failed with status: ${response.status}`);
-                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000)); // Exponential backoff
+
+                    // Log non-OK response status before retrying
+                    console.error(`API Call Failed (Attempt ${i + 1}/${retries}). Status: ${response.status} ${response.statusText}. Retrying...`);
+                    
+                    if (i < retries - 1) {
+                        const delay = Math.pow(2, i) * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay)); // Exponential backoff
+                    } else {
+                        // Throw if it's the last retry attempt
+                        throw new Error(`Final API call failed with status: ${response.status} ${response.statusText}`);
+                    }
                 } catch (error) {
-                    console.error(`Attempt ${i + 1} failed to fetch:`, error);
-                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000)); // Exponential backoff
+                    console.error(`Fetch error (Attempt ${i + 1}/${retries}):`, error);
+                    if (i < retries - 1) {
+                        const delay = Math.pow(2, i) * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay)); // Exponential backoff
+                    } else {
+                        // Re-throw if it's the last retry attempt
+                        throw new Error('All fetch attempts failed.');
+                    }
                 }
             }
-            throw new Error('All fetch attempts failed.');
         }
+
 
         // Fisher-Yates shuffle algorithm
         function shuffleArray(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
-                // FIX: Use standard array destructuring for swapping elements
                 [array[i], array[j]] = [array[j], array[i]]; 
             }
             return array;
@@ -239,7 +275,6 @@
         }
 
         // --- SIMULATION EVENTS (20 Rounds) ---
-        // CRITICAL FIX: Removed numerical prefixes (1., 2., 3., 4.) from labels
         const challenges = [
             {
                 month: 2, // Feb 2021
@@ -472,7 +507,6 @@
         const challengeTitle = document.getElementById('challenge-title');
         const challengeDescription = document.getElementById('challenge-description');
         const optionsContainer = document.getElementById('options-container');
-        const nextButton = document.getElementById('next-button');
         const statusMessage = document.getElementById('status-message');
         const gameOverModal = document.getElementById('game-over-modal');
         const finalSummary = document.getElementById('final-summary');
@@ -483,11 +517,18 @@
         const generatedReportPanel = document.getElementById('generated-report');
         const reportTextElement = document.getElementById('report-text');
 
-        // New Intermission DOM elements
+        // Intermission DOM elements
         const decisionPanel = document.getElementById('decision-panel');
         const intermissionPanel = document.getElementById('intermission-panel');
         const intermissionTimerDisplay = document.getElementById('intermission-timer');
         const intermissionTipElement = document.getElementById('intermission-tip');
+        
+        // Brainstorm DOM Elements
+        const brainstormButton = document.getElementById('brainstorm-button');
+        const brainstormLoader = document.getElementById('brainstorm-loader');
+        const brainstormButtonText = brainstormButton.querySelector('span:not(#brainstorm-loader)');
+        const brainstormOutput = document.getElementById('brainstorm-output');
+        const brainstormText = document.getElementById('brainstorm-text');
 
 
         // --- CORE FUNCTIONS ---
@@ -528,38 +569,36 @@
             challengeDescription.textContent = challenge.description;
             optionsContainer.innerHTML = '';
             statusMessage.classList.add('hidden');
-            nextButton.classList.add('hidden'); // Ensure the next button is hidden
             state.isDecisionPending = true;
             
             decisionPanel.classList.remove('hidden');
-            intermissionPanel.classList.add('hidden'); // Hide intermission panel
-
-            // CRITICAL: SHUFFLE OPTIONS BEFORE DISPLAYING
+            intermissionPanel.classList.add('hidden');
+            
+            // Reset Brainstorm UI
+            brainstormOutput.classList.add('hidden');
+            brainstormText.textContent = '';
+            brainstormButton.disabled = false;
+            
             const shuffledOptions = shuffleArray([...challenge.options]);
 
             shuffledOptions.forEach((option) => {
-                // Find the original, fixed index in the 'challenges' array options list
                 const originalIndex = challenge.options.findIndex(o => o.label === option.label);
 
                 const button = document.createElement('button');
                 button.className = 'option-button w-full text-left p-4 border border-gray-200 rounded-lg bg-white hover:bg-blue-50 transition duration-200';
-                // CRITICAL FIX: The button content now uses the label without any hardcoded numbers
                 button.innerHTML = `
                     <div class="font-bold text-gray-800">${option.label}</div>
                     <div class="text-sm text-gray-600 mt-1">${option.impact}</div>
                 `;
-                // Pass the original index to handleDecision
                 button.onclick = () => handleDecision(originalIndex);
                 optionsContainer.appendChild(button);
             });
-            ROUND_COUNT_DISPLAY.textContent = `${state.currentChallengeIndex + 1}/${challenges.length}`;
         }
 
         function handleDecision(selectedIndex) {
             if (!state.isDecisionPending) return;
 
             const challenge = challenges[state.currentChallengeIndex];
-            // Retrieve the decision from the ORIGINAL (fixed) array using selectedIndex
             const decision = challenge.options[selectedIndex];
             
             // Calculate and apply the Cost Saving/Penalty logic (2 Cr per day saved)
@@ -582,13 +621,11 @@
                 cost: state.costOverrun
             });
 
-            // Update UI
             updateDashboard();
 
-            // Show result message (revealing the impact numbers now)
+            // Show result message
             const delayEffect = decision.delay < 0 ? 'gained' : 'lost';
             const costSavingsText = costAdjustment > 0 ? ` (and saved ₹${costAdjustment.toLocaleString()} Cr in idle resource costs)` : '';
-            
             const netCostImpact = decision.cost - costAdjustment;
 
             statusMessage.innerHTML = `<span class="font-bold">Result:</span> You chose **${decision.label}**. The project ${delayEffect} <span class="font-mono">${Math.abs(decision.delay)} days</span>${costSavingsText}. The net cost impact was <span class="font-mono">₹${netCostImpact >= 0 ? '+' : ''}${netCostImpact.toLocaleString()} Cr</span>.`;
@@ -602,65 +639,235 @@
                 statusMessage.classList.add('bg-yellow-100', 'text-yellow-800');
             }
 
-            // Disable all option buttons
+            // Disable all option buttons and the brainstorm button
             optionsContainer.querySelectorAll('button').forEach(btn => btn.disabled = true);
+            brainstormButton.disabled = true;
 
             state.isDecisionPending = false;
             
-            // START THE INTERMISSION (10-SECOND BREAK)
             startIntermission();
         }
 
         function startIntermission() {
             if (state.currentChallengeIndex >= challenges.length - 1) {
-                // If this was the last challenge, skip intermission and finish
                 return finishSimulation();
             }
 
             state.isIntermission = true;
             state.intermissionTimer = INTERMISSION_DURATION;
             
-            // Hide decision panel, show intermission panel
             decisionPanel.classList.add('hidden');
             intermissionPanel.classList.remove('hidden');
 
-            // Display a random tip
             const tipIndex = Math.floor(Math.random() * PM_TIPS.length);
             intermissionTipElement.innerHTML = PM_TIPS[tipIndex];
 
             intermissionTimerDisplay.textContent = state.intermissionTimer;
             
-            // Start countdown
             state.intermissionIntervalId = setInterval(() => {
                 state.intermissionTimer--;
                 intermissionTimerDisplay.textContent = state.intermissionTimer;
 
                 if (state.intermissionTimer <= 0) {
                     clearInterval(state.intermissionIntervalId);
-                    advanceSimulation(); // Move to the next challenge
+                    advanceSimulation();
                 }
             }, 1000);
         }
 
         function advanceSimulation() {
-            // This function is now called when the intermission ends
             state.isIntermission = false;
 
-            state.currentChallengeIndex++; // Move to the NEXT challenge index
+            state.currentChallengeIndex++;
 
             if (state.currentChallengeIndex < challenges.length) {
-                // CRITICAL FIX: Set the month to the month of the *new* challenge being loaded
                 state.currentMonth = challenges[state.currentChallengeIndex].month;
-
-                // Load the next challenge
                 loadChallenge(challenges[state.currentChallengeIndex]);
                 updateDashboard();
             } else {
-                // End of simulation after the last challenge decision
                 finishSimulation();
             }
         }
 
+        // --- LLM FEATURE 1: DECISION BRAINSTORM ---
+        async function getPmBrainstorm() {
+            if (state.isDecisionPending === false || state.isBrainstorming) return;
+
+            state.isBrainstorming = true;
+            brainstormButton.disabled = true;
+            brainstormLoader.classList.remove('hidden');
+            brainstormButtonText.textContent = 'Analyzing...';
+            brainstormText.innerHTML = 'Analyzing the situation and compiling options...';
+            brainstormOutput.classList.remove('hidden');
+
+            const challenge = challenges[state.currentChallengeIndex];
+            
+            // Format options for the prompt, including their hidden impacts for the AI to analyze the trade-off language
+            const optionsList = challenge.options.map((opt, index) => 
+                `${index + 1}. **${opt.label}** (Impact: ${opt.impact}. Schedule effect: ${opt.delay} days, Cost effect: ₹${opt.cost} Cr)`
+            ).join('\n');
+
+            const systemPrompt = "You are a pragmatic, neutral Project Management Consultant (PMC) specializing in large-scale infrastructure and rail projects. Your goal is to analyze the user's current situation and provide a concise, balanced analysis of the four available options. Structure your output with Markdown headings for 'Challenge Summary' and 'Option Analysis (Pros & Cons)'. Focus on risk management, schedule stability, and stakeholder relations. Do not make a final decision, just provide the facts.";
+            
+            const userQuery = `Current Challenge: ${challenge.title}
+            Description: ${challenge.description}
+            
+            Available Options (Analyze the trade-offs based on the given impacts):
+            ${optionsList}
+            
+            Analyze the long-term strategic pros and cons for each of the four options provided.`;
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            try {
+                const response = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "Failed to get AI analysis. The model returned no content.";
+                
+                brainstormText.innerHTML = text; // Use innerHTML to render markdown formatting
+            } catch (error) {
+                console.error("Error generating brainstorm via API:", error);
+                brainstormText.innerHTML = "Failed to get AI analysis. API service error. Please try again.";
+            } finally {
+                state.isBrainstorming = false;
+                brainstormButtonText.textContent = '✨ Get PM Brainstorm';
+                if (state.isDecisionPending) {
+                     brainstormButton.disabled = false;
+                }
+                brainstormLoader.classList.add('hidden');
+            }
+        }
+
+        // --- LLM FEATURE 2: FINAL REPORT GENERATION ---
+        const generateReportText = async (delay, cost, verdict) => {
+            const systemPrompt = "You are a professional project management consultant (PMC). Your task is to write a formal completion report for the Mumbai-Ahmedabad High-Speed Rail (MAHSR) project, based on the simulation results provided. The report must be concise, structured with Markdown headings, and professional.";
+            
+            const delayStatus = delay < 0 ? `Finished ${Math.abs(delay).toLocaleString()} days ahead of schedule, showcasing proactive risk mitigation.` : `Finished ${delay.toLocaleString()} days behind the original schedule, necessitating a formal time extension claim.`;
+            
+            const costStatus = cost >= 0 ? `The cumulative cost overrun amounted to ₹${cost.toLocaleString()} Cr, demanding a detailed reconciliation.` : `The project achieved a net cost saving of ₹${Math.abs(cost).toLocaleString()} Cr, largely due to efficient resource utilization during time-saving actions.`;
+
+            const userQuery = `Generate a formal, professional Project Completion Report for the MAHSR simulation.
+            
+            Overall Outcome: ${verdict}
+            Final Delay: ${delay} days. (Result: ${delayStatus})
+            Final Cost Overrun: ₹${cost} Cr. (Result: ${costStatus})
+            
+            Write the report including an Executive Summary, a section on Key Performance Indicators (KPIs - focus on Schedule and Budget), and a section on Lessons Learned/Recommendations based on the simulated outcome (e.g., if delay is high, recommend better ROW management).`;
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            try {
+                const response = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                return text || `Error: Could not generate detailed report. Summary: Delay: ${delay} days, Cost: ₹${cost} Cr.`;
+
+            } catch (error) {
+                console.error("Error generating report via API:", error);
+                // Fallback report structure
+                return `# [FALLBACK] MAHSR Project Completion Summary
+## Executive Summary
+The simulation concluded with ${delayStatus}. ${costStatus} This result highlights the critical importance of timely decision-making and aggressive strategy implementation, especially when dealing with complex interfacing and land acquisition challenges typical of large infrastructure projects.
+
+## Key Performance Indicators (KPIs)
+* **Schedule Performance:** ${delay} days of cumulative schedule variance.
+* **Cost Performance:** ₹${cost} Cr cumulative budget variance.
+* **Total Duration:** ${(48 + (delay / 30.4375)).toFixed(1)} months.
+
+## Recommendations
+1.  **Strengthen Risk Contingency:** Formalize budget and schedule contingency plans to absorb external shocks (e.g., COVID-19, adverse weather).
+2.  **Proactive Stakeholder Management:** Dedicate resources to early utility shifting, land clearance, and community liaison to mitigate frequent stoppages.
+3.  **Enhance Technical Collaboration:** Implement joint task forces with the TCAP Engineer to accelerate critical design and approval processes.`;
+            }
+        };
+
+        const simulateSendEmail = (reportContent) => {
+            const DEFAULT_EMAIL = "tkalai@lntecc.com";
+            reportStatus.className = 'p-3 bg-green-100 text-green-800 rounded-lg font-medium text-center mb-4';
+            reportStatus.innerHTML = `
+                Report Generation Complete.
+                <p class="font-bold mt-1">
+                    [Action Simulated]: Report successfully prepared for email delivery to <span class="text-indigo-600">${DEFAULT_EMAIL}</span>.
+                </p>
+                <p class="text-sm mt-1">
+                    The full report is displayed below for your review and manual sharing.
+                </p>
+            `;
+            reportTextElement.innerHTML = reportContent; // Use innerHTML to render markdown formatting
+            generatedReportPanel.classList.remove('hidden');
+        };
+
+
+        function finishSimulation() {
+            state.currentMonth = TOTAL_MONTHS - 1; 
+            updateDashboard();
+
+            const daysInMonth = 30.4375;
+            const targetDuration = TOTAL_MONTHS;
+
+            let outcome;
+            let verdictClass;
+
+            if (state.totalDelayDays < -30) {
+                outcome = "Exceptional Performance! You finished AHEAD of the original target schedule (48 Months). A remarkable feat under intense pressure!";
+                verdictClass = "bg-green-100 text-green-700";
+            } else if (state.totalDelayDays < 120) {
+                outcome = "Excellent Performance! The project finished with a manageable time extension, demonstrating effective crisis management and resilience.";
+                verdictClass = "bg-yellow-100 text-yellow-700";
+            } else {
+                outcome = "Significant Extension Required. The cumulative challenges led to major project delays, requiring formal claims for time extension and facing potential cost penalties.";
+                verdictClass = "bg-red-100 text-red-700";
+            }
+            
+            // Set up UI before generating report
+            const finalDurationDays = (TOTAL_MONTHS * daysInMonth) + state.totalDelayDays;
+            const finalDurationMonths = (finalDurationDays / daysInMonth);
+            
+            finalSummary.innerHTML = `
+                <p><strong>Original Target Duration:</strong> ${targetDuration} Months</p>
+                <p><strong>Total Delay Incurred:</strong> <span class="font-bold ${state.totalDelayDays >= 0 ? 'text-red-600' : 'text-green-600'}">${state.totalDelayDays.toLocaleString()} Days</span></p>
+                <p><strong>Estimated Final Duration:</strong> ${finalDurationMonths.toFixed(1)} Months</p>
+                <p><strong>Total Cost Overrun (Cumulative):</strong> <span class="font-bold ${state.costOverrun > 0 ? 'text-red-600' : 'text-green-600'}">₹${state.costOverrun.toLocaleString()} Cr</span></p>
+            `;
+            verdict.textContent = outcome;
+            verdict.className = `p-4 rounded-lg text-center font-bold text-xl ${verdictClass}`;
+
+            document.getElementById('decision-panel').classList.add('hidden');
+            gameOverModal.classList.remove('hidden');
+            
+            // Trigger LLM-powered report generation
+            reportStatus.textContent = 'Generating final analysis report using AI Consultant... Please wait.';
+            generateReportText(state.totalDelayDays, state.costOverrun, outcome)
+                .then(reportContent => {
+                    simulateSendEmail(reportContent);
+                });
+        }
+        
+        // --- CHART FUNCTIONS ---
         function initCharts() {
             delayChartInstance = new Chart(delayChartContext, {
                 type: 'line',
@@ -696,135 +903,12 @@
                 costChartInstance.update();
             }
         }
-        
-        // --- REPORT GENERATION LOGIC ---
 
-        const generateReportText = async (delay, cost, verdict) => {
-            const systemPrompt = "You are a professional project management consultant (PMC). Your task is to write a formal completion report for the Mumbai-Ahmedabad High-Speed Rail (MAHSR) project, based on the simulation results provided. The report must be concise, structured with Markdown headings, and professional.";
-            
-            const delayStatus = delay < 0 ? `Finished ${Math.abs(delay).toLocaleString()} days ahead of schedule, showcasing proactive risk mitigation.` : `Finished ${delay.toLocaleString()} days behind the original schedule, necessitating a formal time extension claim.`;
-            
-            const costStatus = cost >= 0 ? `The cumulative cost overrun amounted to ₹${cost.toLocaleString()} Cr.` : `The project achieved a net cost saving of ₹${Math.abs(cost).toLocaleString()} Cr, largely due to efficient resource utilization during time-saving actions.`;
-
-            const userQuery = `Generate a completion report for the MAHSR simulation.
-            
-            Overall Outcome: ${verdict}
-            Final Delay: ${delay} days
-            Final Cost Overrun: ₹${cost} Cr
-            
-            Write the report including an Executive Summary, a section on Key Performance Indicators (KPIs - focus on Schedule and Budget), and Recommendations based on the simulation outcome.`;
-
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
-
-            const payload = {
-                contents: [{ parts: [{ text: userQuery }] }],
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }]
-                },
-            };
-
-            try {
-                const response = await fetchWithRetry(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const result = await response.json();
-                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-                return text || `Error: Could not generate detailed report. Summary: Delay: ${delay} days, Cost: ₹${cost} Cr.`;
-
-            } catch (error) {
-                console.error("Error generating report via API:", error);
-                const DEFAULT_EMAIL = "tkalai@lntecc.com";
-                return `# [FALLBACK] MAHSR Project Completion Summary
-## Executive Summary
-The simulation concluded with ${delayStatus}. ${costStatus} This result highlights the critical importance of timely decision-making and aggressive strategy implementation, especially when dealing with complex interfacing and land acquisition challenges typical of large infrastructure projects.
-
-## Key Performance Indicators (KPIs)
-* **Schedule Performance:** ${delay} days of cumulative schedule variance.
-* **Cost Performance:** ₹${cost} Cr cumulative budget variance.
-* **Total Duration:** ${(48 + (delay / 30.4375)).toFixed(1)} months.
-
-## Recommendations
-1.  **Strengthen Risk Contingency:** Formalize budget and schedule contingency plans to absorb external shocks (e.g., COVID-19, adverse weather).
-2.  **Proactive Stakeholder Management:** Dedicate resources to early utility shifting, land clearance, and community liaison to mitigate frequent stoppages.
-3.  **Enhance Technical Collaboration:** Implement joint task forces with the TCAP Engineer to accelerate critical design and approval processes.`;
-            }
-        };
-
-        const simulateSendEmail = (reportContent) => {
-            const DEFAULT_EMAIL = "tkalai@lntecc.com";
-            reportStatus.className = 'p-3 bg-green-100 text-green-800 rounded-lg font-medium text-center mb-4';
-            reportStatus.innerHTML = `
-                Report Generation Complete.
-                <p class="font-bold mt-1">
-                    [Action Simulated]: Report successfully prepared for email delivery to <span class="text-indigo-600">${DEFAULT_EMAIL}</span>.
-                </p>
-                <p class="text-sm mt-1">
-                    The full report is displayed below for your review and manual sharing.
-                </p>
-            `;
-            reportTextElement.textContent = reportContent;
-            generatedReportPanel.classList.remove('hidden');
-        };
-
-
-        function finishSimulation() {
-            // Ensure time is at the end of the project duration (End of Nov 2024 is Month 47)
-            state.currentMonth = TOTAL_MONTHS - 1; 
-            updateDashboard();
-
-            // Calculate final status
-            const daysInMonth = 30.4375;
-            const initialDurationDays = TOTAL_MONTHS * daysInMonth; 
-            const finalDurationDays = initialDurationDays + state.totalDelayDays;
-            const finalDurationMonths = (finalDurationDays / daysInMonth);
-            const targetDate = calculateDate(TOTAL_MONTHS - 1); 
-            const targetDuration = TOTAL_MONTHS;
-
-            let outcome;
-            let verdictClass;
-
-            if (state.totalDelayDays < -30) {
-                outcome = "Exceptional Performance! You finished AHEAD of the original target schedule (48 Months). A remarkable feat under intense pressure!";
-                verdictClass = "bg-green-100 text-green-700";
-            } else if (state.totalDelayDays < 120) { // Less than 4 months delay
-                outcome = "Excellent Performance! The project finished with a manageable time extension, demonstrating effective crisis management and resilience.";
-                verdictClass = "bg-yellow-100 text-yellow-700";
-            } else {
-                outcome = "Significant Extension Required. The cumulative challenges led to major project delays, requiring formal claims for time extension and facing potential cost penalties.";
-                verdictClass = "bg-red-100 text-red-700";
-            }
-            
-            // Set up UI before generating report
-            finalSummary.innerHTML = `
-                <p><strong>Original Target Duration:</strong> ${targetDuration} Months (${calculateDate(0)} - ${targetDate})</p>
-                <p><strong>Total Delay Incurred:</strong> <span class="font-bold ${state.totalDelayDays >= 0 ? 'text-red-600' : 'text-green-600'}">${state.totalDelayDays.toLocaleString()} Days</span></p>
-                <p><strong>Estimated Final Duration:</strong> ${finalDurationMonths.toFixed(1)} Months</p>
-                <p><strong>Total Cost Overrun (Cumulative):</strong> <span class="font-bold ${state.costOverrun > 0 ? 'text-red-600' : 'text-green-600'}">₹${state.costOverrun.toLocaleString()} Cr</span></p>
-            `;
-            verdict.textContent = outcome;
-            verdict.className = `p-4 rounded-lg text-center font-bold text-xl ${verdictClass}`;
-
-            // Hide decision panel and show modal
-            document.getElementById('decision-panel').classList.add('hidden');
-            gameOverModal.classList.remove('hidden');
-            
-            // Trigger report generation and simulated email send
-            reportStatus.textContent = 'Generating final analysis report... Please wait.';
-            generateReportText(state.totalDelayDays, state.costOverrun, outcome)
-                .then(reportContent => {
-                    simulateSendEmail(reportContent);
-                });
-        }
 
         // --- INITIALIZATION ---
         function init() {
             initCharts();
             state.currentChallengeIndex = 0;
-            // FIX: Start the time display at the month of the first challenge (Feb 2021, Month 2)
             state.currentMonth = challenges[0].month; 
             updateDashboard();
             loadChallenge(challenges[state.currentChallengeIndex]);
@@ -834,4 +918,3 @@ The simulation concluded with ${delayStatus}. ${costStatus} This result highligh
     </script>
 </body>
 </html>
-
