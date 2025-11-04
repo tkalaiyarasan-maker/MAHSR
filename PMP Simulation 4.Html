@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAHSR Time Crunch Simulation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN for visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f9;
+        }
+        .dashboard-card {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+            border-radius: 0.75rem;
+        }
+        .progress-bar {
+            transition: width 1s ease-in-out;
+        }
+        .option-button {
+            transition: all 0.2s ease-in-out;
+        }
+        .option-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(59, 130, 246, 0.2);
+        }
+        /* Custom styles for disabled buttons to maintain aesthetics */
+        .option-button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .report-content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div id="app" class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-extrabold text-blue-800">MAHSR: The Time Crunch Challenge (20 Rounds)</h1>
+            <p class="text-lg text-gray-600">Simulate Project Director Decisions (Dec 2020 - Dec 2024)</p>
+        </header>
+
+        <!-- Status Dashboard -->
+        <div id="status-dashboard" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+
+            <!-- Current Time -->
+            <div class="dashboard-card bg-white p-4 text-center">
+                <p class="text-sm font-semibold text-gray-500">Current Month</p>
+                <p id="time-display" class="text-2xl font-bold text-gray-800 mt-1">Dec 2020</p>
+            </div>
+
+            <!-- Total Delay -->
+            <div class="dashboard-card bg-white p-4 text-center">
+                <p class="text-sm font-semibold text-gray-500">Cumulative Delay</p>
+                <p id="delay-display" class="text-2xl font-bold text-red-600 mt-1">0 Days</p>
+            </div>
+
+            <!-- Cost Overrun -->
+            <div class="dashboard-card bg-white p-4 text-center">
+                <p class="text-sm font-semibold text-gray-500">Cost Overrun</p>
+                <p id="cost-display" class="text-2xl font-bold text-green-600 mt-1">₹0 Cr</p>
+            </div>
+
+            <!-- Project Progress -->
+            <div class="dashboard-card bg-white p-4 text-center col-span-2 lg:col-span-1">
+                <p class="text-sm font-semibold text-gray-500">Target Progress</p>
+                <p id="progress-display" class="text-2xl font-bold text-blue-600 mt-1">0%</p>
+            </div>
+        </div>
+
+        <!-- Project Timeline Bar -->
+        <div class="mb-8 p-4 bg-gray-100 rounded-lg dashboard-card">
+            <p class="text-sm font-semibold text-gray-600 mb-2">Project Timeline (48 Months)</p>
+            <div class="w-full bg-gray-300 rounded-full h-2.5">
+                <div id="timeline-bar" class="bg-blue-500 h-2.5 rounded-full progress-bar" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div id="charts-section" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div class="dashboard-card bg-white p-4">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">Cumulative Delay (Days)</h3>
+                <canvas id="delayChart"></canvas>
+            </div>
+            <div class="dashboard-card bg-white p-4">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">Cumulative Cost (₹ Cr)</h3>
+                <canvas id="costChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Intermission Panel (New Element) -->
+        <div id="intermission-panel" class="dashboard-card bg-indigo-50 p-6 md:p-8 border-t-4 border-indigo-500 text-center hidden">
+            <h2 class="text-3xl font-extrabold text-indigo-700 mb-4">Intermission: Stage Break!</h2>
+            <p class="text-xl text-indigo-600 mb-6">Next Challenge in...</p>
+            <p id="intermission-timer" class="text-7xl font-mono font-extrabold text-indigo-900 mb-6">10</p>
+            <div class="bg-indigo-100 p-4 rounded-lg border border-indigo-200">
+                <p class="text-sm text-indigo-500 font-semibold mb-1">Project Management Tip:</p>
+                <p id="intermission-tip" class="text-lg font-medium text-indigo-800"></p>
+            </div>
+        </div>
+
+
+        <!-- Decision Panel -->
+        <div id="decision-panel" class="dashboard-card bg-white p-6 md:p-8 border-t-4 border-blue-500">
+            <h2 id="challenge-title" class="text-xl md:text-2xl font-bold text-gray-800 mb-4"></h2>
+            <p id="challenge-description" class="text-gray-700 mb-6"></p>
+
+            <div id="options-container" class="space-y-4">
+                <!-- Options will be dynamically inserted here -->
+            </div>
+
+            <p id="status-message" class="mt-4 p-3 bg-yellow-100 border border-yellow-300 text-yellow-800 rounded-lg hidden">
+                <span class="font-bold">Result:</span>
+            </p>
+
+            <!-- Next button is now handled by the intermission timer -->
+            <button id="next-button" onclick="advanceSimulation()" class="w-full mt-6 py-3 px-4 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition duration-300 shadow-md hidden">
+                <!-- This button is hidden but kept for reference -->
+                Proceed to Next Stage (<span id="round-count">1/20</span>)
+            </button>
+        </div>
+
+        <!-- Game Over Modal (Hidden by default) -->
+        <div id="game-over-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
+            <div class="bg-white p-8 md:p-10 rounded-xl shadow-2xl max-w-xl w-full transform transition-all duration-300 scale-95">
+                <h2 class="text-3xl font-bold text-blue-800 mb-4 text-center">Project Completion Report</h2>
+                <div id="final-summary" class="text-gray-700 space-y-2 mb-6">
+                    <!-- Final results injected here -->
+                </div>
+                <div id="verdict" class="p-4 rounded-lg text-center font-bold text-xl mb-4"></div>
+                
+                <!-- Report Status -->
+                <div id="report-status" class="p-3 bg-blue-100 text-blue-800 rounded-lg font-medium text-center mb-4">
+                    Generating final analysis report...
+                </div>
+
+                <!-- Report Display Area -->
+                <div id="generated-report" class="bg-gray-100 p-4 rounded-lg border border-gray-300 hidden">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Final Project Report</h3>
+                    <pre id="report-text" class="report-content text-gray-800 text-sm leading-relaxed"></pre>
+                </div>
+
+                <button id="restart-button" onclick="window.location.reload()" class="w-full mt-6 py-3 px-4 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition duration-300">
+                    Restart Simulation
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONSTANTS & CONFIGURATION ---
+        const TOTAL_MONTHS = 48;
+        const START_YEAR = 2020;
+        const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const START_MONTH_INDEX = 11; // Dec 2020 (0-indexed)
+        const ROUND_COUNT_DISPLAY = document.getElementById('round-count');
+        const COST_RATE_PER_DAY_SAVED = 2; // 2 Cr per day saved
+        const API_KEY = ""; // API key is left empty for runtime provision
+        
+        const INTERMISSION_DURATION = 10; // MANDATORY 10-second break
+
+        const PM_TIPS = [
+            "Use the **MoSCoW method** (Must, Should, Could, Won't) for prioritization.",
+            "Conduct **regular, short stand-up meetings** to ensure alignment.",
+            "Document decisions thoroughly to **avoid confusion** later on.",
+            "Break large tasks into smaller, **manageable chunks** (WBS).",
+            "Be vigilant: **scope creep** is the number one project killer.",
+            "Use a **parking lot** to defer discussions that derail the current meeting.",
+            "Always define **clear scope boundaries** before starting a project.",
+            "**Communicate** delays immediately, never wait until the last minute."
+        ];
+
+
+        // --- GLOBAL STATE ---
+        let state = {
+            monthIndex: START_MONTH_INDEX,
+            currentMonth: 0, // 0 to 47
+            totalDelayDays: 0,
+            costOverrun: 0, // In Crore INR
+            targetProgress: 0, 
+            currentChallengeIndex: 0,
+            isDecisionPending: false,
+            isIntermission: false, // New state flag
+            intermissionTimer: INTERMISSION_DURATION, // New timer
+            intermissionIntervalId: null, // New interval handle
+            // History for charting, starting at 0/0
+            history: [{ round: 0, label: 'Start', delay: 0, cost: 0 }] 
+        };
+        
+        // Chart instances
+        let delayChartInstance;
+        let costChartInstance;
+
+        // --- UTILITY FUNCTIONS ---
+
+        // Utility function for exponential backoff retry (crucial for API stability)
+        async function fetchWithRetry(url, options, retries = 3) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.ok) return response;
+                    // If response is not OK, maybe it's a rate limit or transient server error
+                    console.error(`Attempt ${i + 1} failed with status: ${response.status}`);
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000)); // Exponential backoff
+                } catch (error) {
+                    console.error(`Attempt ${i + 1} failed to fetch:`, error);
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000)); // Exponential backoff
+                }
+            }
+            throw new Error('All fetch attempts failed.');
+        }
+
+        // Fisher-Yates shuffle algorithm
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                // FIX: Use standard array destructuring for swapping elements
+                [array[i], array[j]] = [array[j], array[i]]; 
+            }
+            return array;
+        }
+
+        function calculateDate(monthCount) {
+            const totalMonths = START_MONTH_INDEX + monthCount;
+            const year = START_YEAR + Math.floor(totalMonths / 12);
+            const month = totalMonths % 12;
+            return `${MONTH_NAMES[month]} ${year}`;
+        }
+
+        // --- SIMULATION EVENTS (20 Rounds) ---
+        // CRITICAL FIX: Removed numerical prefixes (1., 2., 3., 4.) from labels
+        const challenges = [
+            {
+                month: 2, // Feb 2021
+                title: "ROW Delay & DFCC Obstruction (Severe)",
+                description: "Key work fronts near Surat are blocked by delayed land handover and materials from the DFCC project. We have mobilized, but cannot work effectively.",
+                options: [
+                    { label: "Joint Meetings & Phased Removal Plan", impact: "High management effort. Clears access progressively.", delay: -30, cost: 50 },
+                    { label: "Restructure Work & Prioritize Open Stretches", impact: "Flexible planning, but diverts high-cost equipment.", delay: 10, cost: 100 },
+                    { label: "Issue Formal Stop Work Notice to Client", impact: "Safeguards contract rights, but halts progress completely.", delay: 100, cost: -50 },
+                    { label: "Deploy Manpower to Start Preparatory Works Off-ROW", impact: "Low immediate progress, risks idle time for heavy machinery.", delay: 40, cost: -70 }
+                ]
+            },
+            {
+                month: 4, // Apr 2021
+                title: "COVID-19 Second Wave Disruption (Critical)",
+                description: "The pandemic has shut down large camps and reduced the workforce drastically. We must manage safety, cash flow, and resource retention.",
+                options: [
+                    { label: "Camp Isolation Strategy & Health Protocols", impact: "High fixed cost investment, ensures gradual, safe workforce recovery.", delay: -80, cost: 200 },
+                    { label: "Full Demobilization & Release Leased Equipment", impact: "Saves immediate costs, but leads to major remobilization delays later.", delay: 250, cost: -100 },
+                    { label: "Retain Key Supervisory Staff Only (Skeleton Crew)", impact: "Minimizes cost and keeps planning alive, but delays all field work.", delay: 120, cost: 0 },
+                    { label: "Divert Focus to Remote Design & Procurement Activities", impact: "Maintains non-site momentum, but adds complexity to coordination.", delay: 60, cost: 80 }
+                ]
+            },
+            {
+                month: 7, // Jul 2021
+                title: "Manpower Mobilization Crunch (Tough)",
+                description: "The target is 20,000 laborers, but mobilization is slow, reaching less than a third due to safety fears and competition from local projects. Construction momentum is suffering.",
+                options: [
+                    { label: "Implement Bonus and Welfare Schemes", impact: "High short-term cost, but rapidly accelerates ramp-up.", delay: -60, cost: 150 },
+                    { label: "Outsource Recruitment to Multiple Agencies", impact: "Fast mobilization, risks quality/skill issues, slight cost.", delay: -20, cost: 70 },
+                    { label: "Shift to Highly Mechanized Solutions (Fewer Workers)", impact: "High capital investment, resolves worker shortage, risks FSLM learning curve.", delay: 50, cost: 180 },
+                    { label: "Accept Slow Ramp-up, Prioritizing Quality & Training", impact: "Low risk, sacrifices current progress/schedule buffer.", delay: 130, cost: -30 }
+                ]
+            },
+            {
+                month: 10, // Oct 2021
+                title: "Local Encumbrance: Utilities & Protests",
+                description: "Work is halted due to local opposition and pending utility shifting (water/power lines). Stoppages are frequent, causing over 1,300 cumulative days of delay across the fronts.",
+                options: [
+                    { label: "Dedicated Liaison & Real-time TFL Monitoring", impact: "Proactive negotiation, builds rapport, high administrative cost.", delay: -50, cost: 75 },
+                    { label: "Legal & Police Support for Forced Clearance", impact: "Fastest option, but risks community backlash and repeated stops.", delay: 10, cost: 0 },
+                    { label: "Design Work-Arounds (Minor Realignment)", impact: "Avoids conflict, requires Engineer's (TCAP) approval and redesign.", delay: 70, cost: 80 },
+                    { label: "Offer Compensation/CSR to Local Communities", impact: "High immediate expense, ensures smooth, long-term access.", delay: -20, cost: 120 }
+                ]
+            },
+            {
+                month: 13, // Jan 2022
+                title: "Technical Delay: Vishwamitri Piles Design (Major Hold)",
+                description: "Foundation works at the Vishwamitri River crossing are on hold for over a year pending the Engineer’s direction on revised pile designs due to geological surprises.",
+                options: [
+                    { label: "Push for Temporary Approval & Parallel Rework", impact: "Maintains momentum under risk of future non-conformance/rework.", delay: -70, cost: 50 },
+                    { label: "Wait for Formal Direction (Safety First)", impact: "Ensures full compliance, leads to major idle time for equipment.", delay: 130, cost: -50 },
+                    { label: "Assign Dedicated L&T & TCAP Joint Task Force", impact: "Streamlines communication, but adds resource cost.", delay: -40, cost: 30 },
+                    { label: "Divert Resources to Other Substations/Works", impact: "Low technical risk, but disrupts optimized workflow and re-sequencing cost.", delay: 40, cost: 30 }
+                ]
+            },
+            {
+                month: 16, // Apr 2022
+                title: "ITP-48 & Liquefiable Soil Approval",
+                description: "The specialized ITP (Inspection and Test Plan) for treating the liquefiable soil near Vadodara has been stuck in TCAP approval for months, delaying a critical section.",
+                options: [
+                    { label: "Start Works at Risk, Based on Draft ITP", impact: "High risk of rework/rejection, gains schedule time.", delay: -60, cost: 80 },
+                    { label: "Continuous Technical Dialogue & Daily Follow-up", impact: "Minimizes idle time by speeding approval, high management overhead.", delay: -30, cost: 40 },
+                    { label: "Wait for Final Approval (Zero Risk)", impact: "Full compliance, severe delay to the critical path.", delay: 90, cost: -10 },
+                    { label: "Propose an Alternative, Easier Soil Treatment Method", impact: "Requires new design approval, may not meet safety standards.", delay: 30, cost: 10 }
+                ]
+            },
+            {
+                month: 18, // Jun 2022
+                title: "Design Release: Tapi/Narmada Bridges",
+                description: "Drawings for major river crossings (Tapi and Narmada) are delayed, holding back the start of crucial substructure and cofferdam works.",
+                options: [
+                    { label: "Early Procurement of Materials & Temporary Works", impact: "Allows immediate start post-release, high upfront capital cost.", delay: -40, cost: 150 },
+                    { label: "Demand Acceleration from TCAP with Penalty Threat", impact: "Creates friction, may or may not speed up TCAP. Low cost.", delay: 50, cost: -10 },
+                    { label: "Shift Focus Entirely to Viaduct Segments", impact: "Maximizes progress elsewhere, risks bridge being the ultimate critical path.", delay: 10, cost: 20 },
+                    { label: "Reduce Scope of Temporary Works to Save Cost", impact: "Saves cost, risks delays if drawings require more complex temporary works.", delay: 70, cost: -50 }
+                ]
+            },
+            {
+                month: 20, // Aug 2022
+                title: "Adverse Weather and Flooding",
+                description: "Unusually heavy rainfall caused flooding in Gujarat, affecting concreting schedules and safety. Works are temporarily suspended.",
+                options: [
+                    { label: "Retain Key Resources During Idle Period", impact: "High retention cost, ensures immediate remobilization.", delay: 30, cost: 100 },
+                    { label: "Temporarily Release Non-Critical Resources", impact: "Saves short-term cost, risks remobilization delay and higher long-term costs.", delay: 60, cost: -50 },
+                    { label: "Accelerate Pre-Monsoon Works in Future Years", impact: "Mitigation for *next* year, zero immediate impact.", delay: 0, cost: 10 },
+                    { label: "Invest in Flood Protection Measures (Bunds, Pumps)", impact: "High capital cost, prevents future weather delays.", delay: -10, cost: 150 }
+                ]
+            },
+            {
+                month: 22, // Oct 2022
+                title: "Casting Yard Land Acquisition",
+                description: "We are struggling to acquire the full 1,000 acres required for casting yards along the alignment, threatening the full scale of FSLM operations.",
+                options: [
+                    { label: "Propose Phased/Smaller Yard Operations", impact: "Lower initial capacity, reduces immediate land pressure, slightly slower progress.", delay: 40, cost: -30 },
+                    { label: "Pay Premium to Fast-Track Remaining Land", impact: "High immediate cost, ensures full capacity/faster production.", delay: -50, cost: 100 },
+                    { label: "Reduce Total Casting Yard Requirement by Centralizing", impact: "Saves land cost, increases logistics/transportation costs and risks.", delay: 20, cost: 80 },
+                    { label: "Halt Casting Yard Development Until Land is 100% Clear", impact: "Full compliance, but stops the critical segment production process.", delay: 180, cost: -80 }
+                ]
+            },
+            {
+                month: 24, // Dec 2022
+                title: "FSLM First-Time Implementation (Crippling Low Efficiency)",
+                description: "The Full Span Launching Method (Shinkansen technology) is a steep learning curve. The pace is slow, and initial coordination is imperfect.",
+                options: [
+                    { label: "Intensive Training & Japanese Expert Input", impact: "High upfront cost, quick improvement in productivity.", delay: -80, cost: 150 },
+                    { label: " 'Learn on the Job' Approach' Focus on Volume", impact: "Saves training cost, but suffers sustained low productivity/non-conformance.", delay: 200, cost: -50 },
+                    { label: "Shift Back to Short-Block Segment (SBS) Method", impact: "Eliminates FSLM risk, but slows down long-term speed/progress.", delay: 100, cost: -80 },
+                    { label: "Hire Experienced Operators from Global Projects", impact: "High cost for specialized labor, rapid but temporary fix.", delay: -40, cost: 90 }
+                ]
+            },
+            {
+                month: 26, // Feb 2023
+                title: "Concrete Logistics & Supply Chain",
+                description: "Hitting the target of 3 lakh cubic meters of concrete per month is proving difficult. Batching plant capacity and transport logistics are strained.",
+                options: [
+                    { label: "Invest in New Batching Plants & Trucks", impact: "High capital cost, guarantees supply reliability.", delay: -60, cost: 200 },
+                    { label: "Use Third-Party Ready-Mix (RMC) Suppliers", impact: "Fast capacity increase, risks external quality control.", delay: 0, cost: 50 },
+                    { label: "Negotiate Bulk Discounts for Materials", impact: "Saves cost, but does not solve logistics bottleneck.", delay: 30, cost: -70 },
+                    { label: "Slow Down Pouring to Ensure Quality Control", impact: "High quality, sacrifices monthly production target.", delay: 90, cost: -30 }
+                ]
+            },
+            {
+                month: 28, // Apr 2023
+                title: "Quality Assurance vs. Speed",
+                description: "The TCAP Engineer is enforcing rigorous quality checks, leading to slow Inspection and Test Plan (ITP) sign-offs and holding up casting/launching.",
+                options: [
+                    { label: "Institute 24/7 Dedicated QC/QA Team", impact: "High cost, streamlines ITP process and reduces waiting time.", delay: -50, cost: 80 },
+                    { label: "Lobby NHSRCL to Relax Inspection Frequency", impact: "Risks quality, potentially speeds up workflow if approved.", delay: 30, cost: -10 },
+                    { label: "Implement Pre-emptive Digital Quality Tracking", impact: "High tech investment, reduces inspection time in the long run.", delay: -20, cost: 120 },
+                    { label: "Only work on non-critical path elements until TCAP relaxes", impact: "Guarantees quality but pushes critical path progress back.", delay: 120, cost: -50 }
+                ]
+            },
+            {
+                month: 30, // Jun 2023
+                title: "Night-time Launching Restriction (Severe Impact)",
+                description: "Local authorities impose restrictions on night-time heavy transport and launching operations due to noise complaints and traffic concerns. This effectively cuts capacity by half.",
+                options: [
+                    { label: "Dedicated Liaison with Local Administration", impact: "Builds rapport, gradual clearance with high negotiation cost.", delay: -50, cost: 50 },
+                    { label: "Use Only Low-Noise Equipment & Methods", impact: "High rental/purchase cost, removes constraint.", delay: -30, cost: 100 },
+                    { label: "Shift Launching to Daytime Only", impact: "Massive speed loss, zero risk of public complaint.", delay: 240, cost: -80 },
+                    { label: "Seek High-Level Intervention from NHSRCL/State", impact: "Political solution, slow and uncertain outcome.", delay: 100, cost: -10 }
+                ]
+            },
+            {
+                month: 32, // Aug 2023
+                title: "Interfacing Conflict (P1B Contractor)",
+                description: "Frequent 'hold works' instructions at the GAD-62 interface due to interference with the parallel P1B contractor, demanding careful management.",
+                options: [
+                    { label: "Joint Interface Meetings & Staggered Work Scheduling", impact: "High management time, reduces mutual interference significantly.", delay: -60, cost: 40 },
+                    { label: "Escalate Conflict to NHSRCL for Formal Order", impact: "Minimizes personal conflict, but may result in your package holding works.", delay: 100, cost: -30 },
+                    { label: "Offer Financial Compensation for Delay/Rework", impact: "Fastest way to move, high immediate cost.", delay: -30, cost: 120 },
+                    { label: "Temporarily Halt Work at Interface Zone", impact: "Low risk, ensures compliance, large delay impact.", delay: 150, cost: -50 }
+                ]
+            },
+            {
+                month: 34, // Oct 2023
+                title: "Equipment Breakdown (Casting Gantry) - Extreme",
+                description: "A critical casting yard gantry crane breaks down during a peak production month. This idles a massive team and threatens the supply of segments.",
+                options: [
+                    { label: "Immediate Emergency Replacement/Rental", impact: "Massive rental cost, fastest recovery time.", delay: -50, cost: 250 },
+                    { label: "On-site Repair with Local Resources", impact: "Low cost, long downtime.", delay: 120, cost: -70 },
+                    { label: "Divert Segments from Another Package (If Possible)", impact: "High coordination effort, risks delay on the other package.", delay: 20, cost: 80 },
+                    { label: "Shift Workforce to Off-Peak Activities (Maintenance)", impact: "Uses time productively, but doesn't fix the critical path issue.", delay: 90, cost: -10 }
+                ]
+            },
+            {
+                month: 36, // Dec 2023
+                title: "Late Lifting Location Confirmation",
+                description: "The Engineer's late confirmation on final FSLM lifting locations creates uncertainty in the equipment procurement plan, causing minor stoppages.",
+                options: [
+                    { label: "Push for Temporary Approval to Order Equipment", impact: "Maintains schedule, high cost/risk if locations change.", delay: -40, cost: 70 },
+                    { label: "Wait for Final Formal Confirmation (Zero Risk)", impact: "Ensures compliance, causes equipment idle time.", delay: 80, cost: -40 },
+                    { label: "Order General Purpose Lifting Equipment", impact: "Flexibility, but potentially less efficient/safe.", delay: 10, cost: 0 },
+                    { label: "Offer TCAP a Financial Incentive for Fast-Track Review", impact: "Unethical but fastest solution, very high cost.", delay: -60, cost: 300 }
+                ]
+            },
+            {
+                month: 38, // Feb 2024
+                title: "Final ROW Clearance Near Station",
+                description: "A small, critical land parcel needed for final station approach work is delayed due to complex legal proceedings.",
+                options: [
+                    { label: "Start Work Around the Obstruction", impact: "Maintains progress, risks interference and costly rework later.", delay: 20, cost: 30 },
+                    { label: "High-Priority Legal Team Engagement", impact: "High immediate legal cost, fastest resolution of land issue.", delay: -40, cost: 100 },
+                    { label: "Negotiate with Landowner Directly", impact: "Fast, but risks overpaying for land, moderate cost.", delay: -10, cost: 50 },
+                    { label: "Pause All Station Approach Work Until Clearance", impact: "Zero risk, but delays a critical and visible project component.", delay: 120, cost: -30 }
+                ]
+            },
+            {
+                month: 40, // Apr 2024
+                title: "Workforce Fatigue & Safety Risk",
+                description: "The sustained high-pressure environment is leading to workforce burnout, increased minor incidents, and poor quality control.",
+                options: [
+                    { label: "Implement Mandatory Safety Stand-Down & Rest Days", impact: "Reduces incidents/improves morale, but causes immediate schedule loss.", delay: 60, cost: -50 },
+                    { label: "Increase Safety Supervision & Penalties", impact: "Low cost, risks low morale and resentment.", delay: 20, cost: 0 },
+                    { label: "Offer Overtime Bonuses & Incentive Pay", impact: "High cost, increases speed but potentially also fatigue.", delay: -30, cost: 100 },
+                    { label: "Rotate Teams to Reduce Individual Workload", impact: "Complex logistics, moderate success in reducing fatigue.", delay: 30, cost: 50 }
+                ]
+            },
+            {
+                month: 42, // Jun 2024
+                title: "The Final Acceleration Push (D-Day)",
+                description: "Cumulative delays are massive. You must now decide on the most drastic acceleration strategy to attempt to save the schedule.",
+                options: [
+                    { label: "Launch Aggressive Acceleration Plan (Surge & Night Work)", impact: "Massive immediate cost, but offers significant recovery potential.", delay: -120, cost: 400 },
+                    { label: "File for Time Extension & Maintain Standard Pace", impact: "Low cost, but ensures project fails target date by a wide margin.", delay: 400, cost: -150 },
+                    { label: "Limit Acceleration to High-Impact Tasks Only", impact: "Targeted cost, moderate delay reduction.", delay: -80, cost: 150 },
+                    { label: "Deploy Alternative, Faster, Lower-Quality Methods", impact: "Extremely high risk of rework, fastest schedule recovery.", delay: -200, cost: 100 }
+                ]
+            },
+            {
+                month: 44, // Aug 2024
+                title: "Pre-Completion Testing & Handover Deadline",
+                description: "Final dynamic testing and clearance procedures are looming. TCAP and NHSRCL require extensive documentation and test runs.",
+                options: [
+                    { label: "Dedicated Handover Task Force & Documentation Surge", impact: "High administrative cost, ensures smooth final clearance.", delay: -30, cost: 80 },
+                    { label: "Fast-Track Testing (Minimize Protocol)", impact: "Saves time, high risk of rejection and re-testing.", delay: 30, cost: -50 },
+                    { label: "Delay Final Billing to Focus on Site Completion", impact: "Internal cost issue, keeps focus on speed.", delay: 20, cost: -80 },
+                    { label: "Offer TCAP/NHSRCL Staff High-Value Incentives", impact: "High, questionable cost, speeds up final sign-off.", delay: -50, cost: 200 }
+                ]
+            }
+        ];
+
+        // --- DOM ELEMENTS ---
+        const timeDisplay = document.getElementById('time-display');
+        const delayDisplay = document.getElementById('delay-display');
+        const costDisplay = document.getElementById('cost-display');
+        const progressDisplay = document.getElementById('progress-display');
+        const timelineBar = document.getElementById('timeline-bar');
+        const challengeTitle = document.getElementById('challenge-title');
+        const challengeDescription = document.getElementById('challenge-description');
+        const optionsContainer = document.getElementById('options-container');
+        const nextButton = document.getElementById('next-button');
+        const statusMessage = document.getElementById('status-message');
+        const gameOverModal = document.getElementById('game-over-modal');
+        const finalSummary = document.getElementById('final-summary');
+        const verdict = document.getElementById('verdict');
+        const delayChartContext = document.getElementById('delayChart').getContext('2d');
+        const costChartContext = document.getElementById('costChart').getContext('2d');
+        const reportStatus = document.getElementById('report-status');
+        const generatedReportPanel = document.getElementById('generated-report');
+        const reportTextElement = document.getElementById('report-text');
+
+        // New Intermission DOM elements
+        const decisionPanel = document.getElementById('decision-panel');
+        const intermissionPanel = document.getElementById('intermission-panel');
+        const intermissionTimerDisplay = document.getElementById('intermission-timer');
+        const intermissionTipElement = document.getElementById('intermission-tip');
+
+
+        // --- CORE FUNCTIONS ---
+
+        function updateDashboard() {
+            // Update Time
+            timeDisplay.textContent = calculateDate(state.currentMonth);
+
+            // Update Delay
+            delayDisplay.textContent = `${state.totalDelayDays.toLocaleString()} Days`;
+            delayDisplay.classList.remove('text-green-600', 'text-yellow-600', 'text-red-600');
+            if (state.totalDelayDays < 0) { // Ahead of schedule
+                delayDisplay.classList.add('text-green-600');
+            } else if (state.totalDelayDays < 180) { // < 6 months buffer used
+                delayDisplay.classList.add('text-yellow-600');
+            } else {
+                delayDisplay.classList.add('text-red-600');
+            }
+
+            // Update Cost
+            const sign = state.costOverrun >= 0 ? '₹' : '-₹';
+            const absCost = Math.abs(state.costOverrun).toLocaleString();
+            costDisplay.textContent = `${sign}${absCost} Cr`;
+            costDisplay.classList.remove('text-green-600', 'text-red-600');
+            costDisplay.classList.add(state.costOverrun <= 0 ? 'text-green-600' : 'text-red-600');
+
+            // Update Progress
+            state.targetProgress = Math.min(100, Math.round((state.currentMonth / TOTAL_MONTHS) * 100));
+            progressDisplay.textContent = `${state.targetProgress}%`;
+            timelineBar.style.width = `${state.targetProgress}%`;
+            
+            // Update Charts
+            updateCharts();
+        }
+
+        function loadChallenge(challenge) {
+            challengeTitle.textContent = `Stage ${state.currentChallengeIndex + 1}/${challenges.length}: ${challenge.title}`;
+            challengeDescription.textContent = challenge.description;
+            optionsContainer.innerHTML = '';
+            statusMessage.classList.add('hidden');
+            nextButton.classList.add('hidden'); // Ensure the next button is hidden
+            state.isDecisionPending = true;
+            
+            decisionPanel.classList.remove('hidden');
+            intermissionPanel.classList.add('hidden'); // Hide intermission panel
+
+            // CRITICAL: SHUFFLE OPTIONS BEFORE DISPLAYING
+            const shuffledOptions = shuffleArray([...challenge.options]);
+
+            shuffledOptions.forEach((option) => {
+                // Find the original, fixed index in the 'challenges' array options list
+                const originalIndex = challenge.options.findIndex(o => o.label === option.label);
+
+                const button = document.createElement('button');
+                button.className = 'option-button w-full text-left p-4 border border-gray-200 rounded-lg bg-white hover:bg-blue-50 transition duration-200';
+                // CRITICAL FIX: The button content now uses the label without any hardcoded numbers
+                button.innerHTML = `
+                    <div class="font-bold text-gray-800">${option.label}</div>
+                    <div class="text-sm text-gray-600 mt-1">${option.impact}</div>
+                `;
+                // Pass the original index to handleDecision
+                button.onclick = () => handleDecision(originalIndex);
+                optionsContainer.appendChild(button);
+            });
+            ROUND_COUNT_DISPLAY.textContent = `${state.currentChallengeIndex + 1}/${challenges.length}`;
+        }
+
+        function handleDecision(selectedIndex) {
+            if (!state.isDecisionPending) return;
+
+            const challenge = challenges[state.currentChallengeIndex];
+            // Retrieve the decision from the ORIGINAL (fixed) array using selectedIndex
+            const decision = challenge.options[selectedIndex];
+            
+            // Calculate and apply the Cost Saving/Penalty logic (2 Cr per day saved)
+            let costAdjustment = 0;
+            if (decision.delay < 0) {
+                // Time saved leads to cost saving (2 Cr per day saved)
+                costAdjustment = Math.abs(decision.delay) * COST_RATE_PER_DAY_SAVED;
+                state.costOverrun -= costAdjustment;
+            }
+            
+            // Apply base impacts from the decision
+            state.totalDelayDays += decision.delay;
+            state.costOverrun += decision.cost;
+
+            // Record history
+            state.history.push({
+                round: state.currentChallengeIndex + 1,
+                label: `R${state.currentChallengeIndex + 1}`,
+                delay: state.totalDelayDays,
+                cost: state.costOverrun
+            });
+
+            // Update UI
+            updateDashboard();
+
+            // Show result message (revealing the impact numbers now)
+            const delayEffect = decision.delay < 0 ? 'gained' : 'lost';
+            const costSavingsText = costAdjustment > 0 ? ` (and saved ₹${costAdjustment.toLocaleString()} Cr in idle resource costs)` : '';
+            
+            const netCostImpact = decision.cost - costAdjustment;
+
+            statusMessage.innerHTML = `<span class="font-bold">Result:</span> You chose **${decision.label}**. The project ${delayEffect} <span class="font-mono">${Math.abs(decision.delay)} days</span>${costSavingsText}. The net cost impact was <span class="font-mono">₹${netCostImpact >= 0 ? '+' : ''}${netCostImpact.toLocaleString()} Cr</span>.`;
+            statusMessage.classList.remove('hidden', 'bg-yellow-100', 'bg-green-100', 'bg-red-100', 'text-yellow-800', 'text-green-800', 'text-red-800');
+
+            if (decision.delay < 0) {
+                statusMessage.classList.add('bg-green-100', 'text-green-800');
+            } else if (decision.delay > 50) {
+                statusMessage.classList.add('bg-red-100', 'text-red-800');
+            } else {
+                statusMessage.classList.add('bg-yellow-100', 'text-yellow-800');
+            }
+
+            // Disable all option buttons
+            optionsContainer.querySelectorAll('button').forEach(btn => btn.disabled = true);
+
+            state.isDecisionPending = false;
+            
+            // START THE INTERMISSION (10-SECOND BREAK)
+            startIntermission();
+        }
+
+        function startIntermission() {
+            if (state.currentChallengeIndex >= challenges.length - 1) {
+                // If this was the last challenge, skip intermission and finish
+                return finishSimulation();
+            }
+
+            state.isIntermission = true;
+            state.intermissionTimer = INTERMISSION_DURATION;
+            
+            // Hide decision panel, show intermission panel
+            decisionPanel.classList.add('hidden');
+            intermissionPanel.classList.remove('hidden');
+
+            // Display a random tip
+            const tipIndex = Math.floor(Math.random() * PM_TIPS.length);
+            intermissionTipElement.innerHTML = PM_TIPS[tipIndex];
+
+            intermissionTimerDisplay.textContent = state.intermissionTimer;
+            
+            // Start countdown
+            state.intermissionIntervalId = setInterval(() => {
+                state.intermissionTimer--;
+                intermissionTimerDisplay.textContent = state.intermissionTimer;
+
+                if (state.intermissionTimer <= 0) {
+                    clearInterval(state.intermissionIntervalId);
+                    advanceSimulation(); // Move to the next challenge
+                }
+            }, 1000);
+        }
+
+        function advanceSimulation() {
+            // This function is now called when the intermission ends
+            state.isIntermission = false;
+
+            state.currentChallengeIndex++; // Move to the NEXT challenge index
+
+            if (state.currentChallengeIndex < challenges.length) {
+                // CRITICAL FIX: Set the month to the month of the *new* challenge being loaded
+                state.currentMonth = challenges[state.currentChallengeIndex].month;
+
+                // Load the next challenge
+                loadChallenge(challenges[state.currentChallengeIndex]);
+                updateDashboard();
+            } else {
+                // End of simulation after the last challenge decision
+                finishSimulation();
+            }
+        }
+
+        function initCharts() {
+            delayChartInstance = new Chart(delayChartContext, {
+                type: 'line',
+                data: {
+                    labels: state.history.map(h => h.label),
+                    datasets: [{ label: 'Cumulative Delay (Days)', data: state.history.map(h => h.delay), borderColor: '#ef4444', tension: 0.2, fill: false, pointBackgroundColor: '#ef4444' }]
+                },
+                options: { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: false, title: { display: true, text: 'Days' } }, x: { title: { display: true, text: 'Decision Round' } } }, plugins: { legend: { display: false } } }
+            });
+
+            costChartInstance = new Chart(costChartContext, {
+                type: 'line',
+                data: {
+                    labels: state.history.map(h => h.label),
+                    datasets: [{ label: 'Cumulative Cost (₹ Cr)', data: state.history.map(h => h.cost), borderColor: '#22c55e', tension: 0.2, fill: false, pointBackgroundColor: '#22c55e' }]
+                },
+                options: { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: false, title: { display: true, text: 'Cost Overrun (₹ Cr)' } }, x: { title: { display: true, text: 'Decision Round' } } }, plugins: { legend: { display: false } } }
+            });
+        }
+
+        function updateCharts() {
+            if (delayChartInstance && costChartInstance) {
+                const labels = state.history.map(h => h.label);
+                const delayData = state.history.map(h => h.delay);
+                const costData = state.history.map(h => h.cost);
+                
+                delayChartInstance.data.labels = labels;
+                delayChartInstance.data.datasets[0].data = delayData;
+                delayChartInstance.update();
+
+                costChartInstance.data.labels = labels;
+                costChartInstance.data.datasets[0].data = costData;
+                costChartInstance.update();
+            }
+        }
+        
+        // --- REPORT GENERATION LOGIC ---
+
+        const generateReportText = async (delay, cost, verdict) => {
+            const systemPrompt = "You are a professional project management consultant (PMC). Your task is to write a formal completion report for the Mumbai-Ahmedabad High-Speed Rail (MAHSR) project, based on the simulation results provided. The report must be concise, structured with Markdown headings, and professional.";
+            
+            const delayStatus = delay < 0 ? `Finished ${Math.abs(delay).toLocaleString()} days ahead of schedule, showcasing proactive risk mitigation.` : `Finished ${delay.toLocaleString()} days behind the original schedule, necessitating a formal time extension claim.`;
+            
+            const costStatus = cost >= 0 ? `The cumulative cost overrun amounted to ₹${cost.toLocaleString()} Cr.` : `The project achieved a net cost saving of ₹${Math.abs(cost).toLocaleString()} Cr, largely due to efficient resource utilization during time-saving actions.`;
+
+            const userQuery = `Generate a completion report for the MAHSR simulation.
+            
+            Overall Outcome: ${verdict}
+            Final Delay: ${delay} days
+            Final Cost Overrun: ₹${cost} Cr
+            
+            Write the report including an Executive Summary, a section on Key Performance Indicators (KPIs - focus on Schedule and Budget), and Recommendations based on the simulation outcome.`;
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            try {
+                const response = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                return text || `Error: Could not generate detailed report. Summary: Delay: ${delay} days, Cost: ₹${cost} Cr.`;
+
+            } catch (error) {
+                console.error("Error generating report via API:", error);
+                const DEFAULT_EMAIL = "tkalai@lntecc.com";
+                return `# [FALLBACK] MAHSR Project Completion Summary
+## Executive Summary
+The simulation concluded with ${delayStatus}. ${costStatus} This result highlights the critical importance of timely decision-making and aggressive strategy implementation, especially when dealing with complex interfacing and land acquisition challenges typical of large infrastructure projects.
+
+## Key Performance Indicators (KPIs)
+* **Schedule Performance:** ${delay} days of cumulative schedule variance.
+* **Cost Performance:** ₹${cost} Cr cumulative budget variance.
+* **Total Duration:** ${(48 + (delay / 30.4375)).toFixed(1)} months.
+
+## Recommendations
+1.  **Strengthen Risk Contingency:** Formalize budget and schedule contingency plans to absorb external shocks (e.g., COVID-19, adverse weather).
+2.  **Proactive Stakeholder Management:** Dedicate resources to early utility shifting, land clearance, and community liaison to mitigate frequent stoppages.
+3.  **Enhance Technical Collaboration:** Implement joint task forces with the TCAP Engineer to accelerate critical design and approval processes.`;
+            }
+        };
+
+        const simulateSendEmail = (reportContent) => {
+            const DEFAULT_EMAIL = "tkalai@lntecc.com";
+            reportStatus.className = 'p-3 bg-green-100 text-green-800 rounded-lg font-medium text-center mb-4';
+            reportStatus.innerHTML = `
+                Report Generation Complete.
+                <p class="font-bold mt-1">
+                    [Action Simulated]: Report successfully prepared for email delivery to <span class="text-indigo-600">${DEFAULT_EMAIL}</span>.
+                </p>
+                <p class="text-sm mt-1">
+                    The full report is displayed below for your review and manual sharing.
+                </p>
+            `;
+            reportTextElement.textContent = reportContent;
+            generatedReportPanel.classList.remove('hidden');
+        };
+
+
+        function finishSimulation() {
+            // Ensure time is at the end of the project duration (End of Nov 2024 is Month 47)
+            state.currentMonth = TOTAL_MONTHS - 1; 
+            updateDashboard();
+
+            // Calculate final status
+            const daysInMonth = 30.4375;
+            const initialDurationDays = TOTAL_MONTHS * daysInMonth; 
+            const finalDurationDays = initialDurationDays + state.totalDelayDays;
+            const finalDurationMonths = (finalDurationDays / daysInMonth);
+            const targetDate = calculateDate(TOTAL_MONTHS - 1); 
+            const targetDuration = TOTAL_MONTHS;
+
+            let outcome;
+            let verdictClass;
+
+            if (state.totalDelayDays < -30) {
+                outcome = "Exceptional Performance! You finished AHEAD of the original target schedule (48 Months). A remarkable feat under intense pressure!";
+                verdictClass = "bg-green-100 text-green-700";
+            } else if (state.totalDelayDays < 120) { // Less than 4 months delay
+                outcome = "Excellent Performance! The project finished with a manageable time extension, demonstrating effective crisis management and resilience.";
+                verdictClass = "bg-yellow-100 text-yellow-700";
+            } else {
+                outcome = "Significant Extension Required. The cumulative challenges led to major project delays, requiring formal claims for time extension and facing potential cost penalties.";
+                verdictClass = "bg-red-100 text-red-700";
+            }
+            
+            // Set up UI before generating report
+            finalSummary.innerHTML = `
+                <p><strong>Original Target Duration:</strong> ${targetDuration} Months (${calculateDate(0)} - ${targetDate})</p>
+                <p><strong>Total Delay Incurred:</strong> <span class="font-bold ${state.totalDelayDays >= 0 ? 'text-red-600' : 'text-green-600'}">${state.totalDelayDays.toLocaleString()} Days</span></p>
+                <p><strong>Estimated Final Duration:</strong> ${finalDurationMonths.toFixed(1)} Months</p>
+                <p><strong>Total Cost Overrun (Cumulative):</strong> <span class="font-bold ${state.costOverrun > 0 ? 'text-red-600' : 'text-green-600'}">₹${state.costOverrun.toLocaleString()} Cr</span></p>
+            `;
+            verdict.textContent = outcome;
+            verdict.className = `p-4 rounded-lg text-center font-bold text-xl ${verdictClass}`;
+
+            // Hide decision panel and show modal
+            document.getElementById('decision-panel').classList.add('hidden');
+            gameOverModal.classList.remove('hidden');
+            
+            // Trigger report generation and simulated email send
+            reportStatus.textContent = 'Generating final analysis report... Please wait.';
+            generateReportText(state.totalDelayDays, state.costOverrun, outcome)
+                .then(reportContent => {
+                    simulateSendEmail(reportContent);
+                });
+        }
+
+        // --- INITIALIZATION ---
+        function init() {
+            initCharts();
+            state.currentChallengeIndex = 0;
+            // FIX: Start the time display at the month of the first challenge (Feb 2021, Month 2)
+            state.currentMonth = challenges[0].month; 
+            updateDashboard();
+            loadChallenge(challenges[state.currentChallengeIndex]);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
